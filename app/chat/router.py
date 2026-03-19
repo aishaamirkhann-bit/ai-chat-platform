@@ -1,7 +1,3 @@
-"""
-chat/router.py — Chat Endpoints + Streaming
-"""
-
 import json
 import logging
 
@@ -18,11 +14,10 @@ from app.rag.service import rag_service
 
 logger = logging.getLogger(__name__)
 
-# ❌ prefix="/chat" hata diya — main.py mein already /chat prefix hai
 router = APIRouter(tags=["Chat"])
 
 
-# ─── Schemas ──────────────────────────────────────────────────────────────────
+#  Schemas 
 class CreateConversationRequest(BaseModel):
     title: str = "New Conversation"
     model: str = "gpt-4o-mini"
@@ -53,7 +48,7 @@ def get_user_id(current_user: dict) -> int:
     return int(current_user["sub"])
 
 
-# ─── Endpoints ────────────────────────────────────────────────────────────────
+#  Endpoints 
 @router.post(
     "/conversations",
     response_model=ConversationResponse,
@@ -151,15 +146,19 @@ async def send_message(
 @router.post(
     "/conversations/{conversation_id}/stream",
     summary="Stream Message",
-    description="""STREAMING message — ChatGPT jaisa feel!
+    description="""ChatGPT-like Experience
 
-Kaise kaam karta hai:
-1. Client request bhejta hai
-2. Server StreamingResponse return karta hai
-3. Jaise jaise LLM tokens generate karta hai → server client ko bhejta hai
-4. Client real-time mein text dikhata hai
+How it works:
 
-SSE (Server-Sent Events) format:
+The client sends a request
+
+The server returns a StreamingResponse
+
+As the LLM generates tokens → the server sends them to the client in real-time
+
+The client displays the text instantly as it arrives
+SSE (Server-Sent Events) Format:
+
 data: Hello
 
 data: how
@@ -169,8 +168,7 @@ data: are
 data: you?
 
 data: [DONE]
-
-Frontend mein EventSource ya fetch with ReadableStream use karo""",
+""",
 )
 async def stream_message(
     conversation_id: int,

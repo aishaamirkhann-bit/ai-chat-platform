@@ -1,8 +1,8 @@
-# 🤖 AI Chat Platform
+#  AI Chat Platform
 
 Production-ready AI backend built with FastAPI, PostgreSQL, Redis, and OpenAI.
 
-## ✨ Features
+##  Features
 
 - **JWT Authentication** — Register, Login, Protected routes
 - **AI Chat** — OpenAI GPT-4 + Anthropic Claude integration  
@@ -11,7 +11,7 @@ Production-ready AI backend built with FastAPI, PostgreSQL, Redis, and OpenAI.
 - **Redis Caching** — 60-70% LLM cost reduction
 - **Rate Limiting** — 50 requests/hour per user
 
-## 🛠️ Tech Stack
+##  Tech Stack
 
 - **Backend:** Python, FastAPI, Async SQLAlchemy
 - **Database:** PostgreSQL
@@ -20,7 +20,7 @@ Production-ready AI backend built with FastAPI, PostgreSQL, Redis, and OpenAI.
 - **Auth:** JWT (python-jose, bcrypt)
 - **Deploy:** AWS (EC2, RDS, ElastiCache)
 
-## 🚀 Quick Start
+##  Quick Start
 ```bash
 # Install dependencies
 pip install -r requirements.txt
@@ -33,10 +33,9 @@ cp .env.example .env
 uvicorn app.main:app --reload
 ```
 
-## 📡 API Endpoints
+## API Endpoints
 
 | Method | Endpoint | Description |
-|--------|----------|-------------|
 | POST | /auth/register | Register new user |
 | POST | /auth/login | Login + get JWT token |
 | POST | /chat/conversations | Create conversation |

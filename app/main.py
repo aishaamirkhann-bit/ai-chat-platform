@@ -12,11 +12,11 @@ from app.database import create_tables
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """Startup and shutdown events"""
-    print("🚀 Starting AI Chat Platform...")
+    print(" Starting AI Chat Platform...")
     await create_tables()
-    print(f"📡 API ready at http://localhost:8000/docs")
+    print(f" API ready at http://localhost:8000/docs")
     yield
-    print("👋 Shutting down...")
+    print(" Shutting down...")
 
 
 app = FastAPI(
@@ -47,7 +47,7 @@ app.add_middleware(
 
 # Routers
 from app.auth.router import router as auth_router
-from app.chat.router import router as chat_router
+from app.chat.router import router as chat_router  # noqa: E402
 from app.rag.router  import router as rag_router
 
 app.include_router(auth_router, prefix="/auth",  tags=["Authentication"])

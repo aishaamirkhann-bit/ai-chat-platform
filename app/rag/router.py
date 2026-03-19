@@ -1,12 +1,3 @@
-"""
-rag/router.py — Document Upload aur Search Endpoints
-
-Endpoints:
-POST /rag/upload  → Document upload karo (PDF/TXT)
-GET  /rag/docs    → Apne documents dekho
-POST /rag/search  → Documents mein search karo (test ke liye)
-"""
-
 import logging
 
 from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, status
@@ -37,19 +28,6 @@ async def upload_document(
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
-    """
-    Document upload karo — RAG ke liye index hoga
-
-    Supported formats: .txt, .md (PDF ke liye pdfplumber add karo)
-    Max size: 5 MB
-
-    Process:
-    1. File validate karo
-    2. Content read karo
-    3. Chunks banao + embed karo
-    4. DB mein save karo
-    5. Result return karo
-    """
     # File type check
     if file.content_type not in ALLOWED_TYPES:
         raise HTTPException(
@@ -109,10 +87,6 @@ async def search_documents(
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
-    """
-    Documents mein search karo (test ke liye)
-    Production mein yeh directly chat endpoint se hoga
-    """
     results = await rag_service.search_documents(
         query=data.query,
         user_id=current_user.id,

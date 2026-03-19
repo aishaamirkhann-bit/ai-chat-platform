@@ -1,10 +1,3 @@
-"""
-rag/models.py — Document Storage Table
-
-pgvector extension use karte hain embeddings store karne ke liye
-Vector type = float numbers ki list jo text ka meaning represent karti hai
-"""
-
 import datetime
 
 from sqlalchemy import Column, DateTime, ForeignKey, Integer, String, Text

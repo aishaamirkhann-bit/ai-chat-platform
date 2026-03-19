@@ -1,30 +1,3 @@
-"""
-chat/service.py — LLM Integration + Streaming + Caching
-
-Yahan sab kuch hota hai:
-1. OpenAI / Anthropic call
-2. Streaming responses
-3. Cache check (pehle cache, phir LLM)
-4. Conversation history manage karna
-5. Token count track karna
-
-STREAMING — Interview mein yeh zaroor samjhao:
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-Normal Response:
-  Client request bhejta hai → 5 second wait → poora jawab milta hai
-  User dekhta hai: cursor ghoomta raha, phir ek dum text aa gaya
-
-Streaming Response:
-  Client request bhejta hai → 0.1 sec mein pehla word
-  → 0.2 sec mein doosra word → ... → ChatGPT jaisa feel!
-
-Technical implementation:
-  Server-Sent Events (SSE) use karte hain
-  Content-Type: text/event-stream
-  Har chunk aaya → client ko bheja
-  AsyncGenerator → yield karta rehta hai
-"""
-
 import logging
 from typing import AsyncGenerator
 
@@ -40,29 +13,21 @@ from app.config import settings
 logger = logging.getLogger(__name__)
 
 
-# ─── LLM Clients ──────────────────────────────────────────────────────────────
+# LLM Clients 
 openai_client    = openai.AsyncOpenAI(api_key=settings.OPENAI_API_KEY)
 anthropic_client = anthropic.AsyncAnthropic(api_key=settings.ANTHROPIC_API_KEY)
 
 
-# ─── Chat Service ─────────────────────────────────────────────────────────────
+# Chat Service 
 class ChatService:
 
-    # ── History Management ────────────────────────────────────────────────────
+    #  History Management 
     async def get_conversation_history(
         self,
         conversation_id: int,
         db: AsyncSession,
         limit: int = 10,
     ) -> list[dict]:
-        """
-        DB se purani messages load karo
-        LLM ko context dene ke liye zaroori hai
-
-        limit=10 kyun?
-        Zyada history → zyada tokens → zyada cost
-        Last 10 messages enough hain context ke liye
-        """
         result = await db.execute(
             select(Message)
             .where(Message.conversation_id == conversation_id)
@@ -86,7 +51,6 @@ class ChatService:
         model: str,
         db: AsyncSession,
     ):
-        """User aur Assistant dono messages DB mein save karo"""
         user_msg = Message(
             conversation_id=conversation_id,
             role="user",
@@ -102,7 +66,7 @@ class ChatService:
         db.add_all([user_msg, assistant_msg])
         await db.commit()
 
-    # ── Conversation CRUD ─────────────────────────────────────────────────────
+    #  Conversation CRUD 
     async def create_conversation(
         self,
         user_id: int,
@@ -129,7 +93,6 @@ class ChatService:
     async def verify_conversation_owner(
         self, conversation_id: int, user_id: int, db: AsyncSession
     ) -> Conversation:
-        """Security check — koi doosre ka conversation access na kar sake"""
         result = await db.execute(
             select(Conversation).where(
                 Conversation.id == user_id,
@@ -142,7 +105,7 @@ class ChatService:
             raise HTTPException(404, "Conversation nahi mili ya access nahi hai")
         return conv
 
-    # ── OpenAI Chat ───────────────────────────────────────────────────────────
+    #  OpenAI Chat 
     async def chat_openai(
         self,
         user_message: str,
@@ -150,10 +113,7 @@ class ChatService:
         model: str = "gpt-4o-mini",
         system_prompt: str = None,
     ) -> dict:
-        """
-        Normal (Non-Streaming) OpenAI call
-        Cache check → LLM call → Cache save
-        """
+
         # Step 1: Cache check karo
         cached = await cache_service.get_llm_response(user_message, model)
         if cached:
@@ -186,7 +146,7 @@ class ChatService:
 
         return result
 
-    # ── STREAMING ─────────────────────────────────────────────────────────────
+    #  STREAMING 
     async def stream_openai(
         self,
         user_message: str,
@@ -195,28 +155,13 @@ class ChatService:
         system_prompt: str = None,
         rag_context: str = None,
     ) -> AsyncGenerator[str, None]:
-        """
-        STREAMING Response — ChatGPT jaisa feel
 
-        AsyncGenerator kya hai?
-        Normal function: ek baar run karo, ek value return karo
-        Generator:       baar baar run karo, har baar ek value 'yield' karo
-
-        Yahan har LLM token aata hai → hum turant client ko bhejte hain
-        Client mein real-time text dikhta hai
-
-        FastAPI mein StreamingResponse use karte hain is ke saath
-        """
         messages = []
 
         # System prompt (RAG context bhi yahan aata hai)
         base_system = system_prompt or "Aap ek helpful AI assistant hain."
         if rag_context:
             base_system += f"""
-
-Neeche diya gaya context use karo jawab dene ke liye.
-Sirf is context se jawab do. Agar context mein nahi hai to
-'Mujhe is ke baare mein maloomat nahi' kaho.
 
 CONTEXT:
 {rag_context}
@@ -252,14 +197,13 @@ CONTEXT:
         # Streaming khatam hone ke baad full response log karo
         logger.info(f"Streaming complete. Total chars: {len(full_response)}")
 
-    # ── Anthropic (Claude) ────────────────────────────────────────────────────
+    #  Anthropic (Claude) 
     async def chat_anthropic(
         self,
         user_message: str,
         history: list[dict],
         system_prompt: str = None,
     ) -> dict:
-        """Claude API integration"""
         cached = await cache_service.get_llm_response(
             user_message, "claude-sonnet-4-20250514"
         )
@@ -292,7 +236,6 @@ CONTEXT:
         history: list[dict],
         system_prompt: str = None,
     ) -> AsyncGenerator[str, None]:
-        """Claude streaming"""
         async with anthropic_client.messages.stream(
             model="claude-sonnet-4-20250514",
             max_tokens=1500,
@@ -303,5 +246,5 @@ CONTEXT:
                 yield text
 
 
-# ─── Singleton ────────────────────────────────────────────────────────────────
+#  Singleton 
 chat_service = ChatService()

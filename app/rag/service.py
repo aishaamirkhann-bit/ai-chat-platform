@@ -1,41 +1,3 @@
-"""
-rag/service.py — Complete RAG Pipeline
-
-RAG = Retrieval Augmented Generation
-
-Poora flow:
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-
-INDEXING (document upload par ek baar):
-Document (PDF/TXT)
-       ↓
-Text extract karo
-       ↓
-Chunks mein todo (500 words each)
-       ↓
-Har chunk ko embedding banao (text → 384 numbers)
-       ↓
-DB mein store karo (content + embedding)
-
-RETRIEVAL (har query par):
-User ka sawal
-       ↓
-Sawal ko bhi embedding banao
-       ↓
-DB mein cosine similarity se compare karo
-       ↓
-Top 3 similar chunks nikalo
-       ↓
-LLM ko context ke sath do
-       ↓
-LLM apke data se jawab deta hai!
-
-Cosine Similarity kya hai?
-Do vectors ke darmiyan angle measure karna
-Angle 0° = same meaning = similarity 1.0
-Angle 90° = alag meaning = similarity 0.0
-"""
-
 import json
 import logging
 import math
@@ -52,36 +14,23 @@ _embedder = None
 
 
 def get_embedder():
-    """Embedder ko lazily load karo — app startup slow na ho"""
     global _embedder
     if _embedder is None:
         from sentence_transformers import SentenceTransformer
         _embedder = SentenceTransformer("all-MiniLM-L6-v2")
-        logger.info("✅ Embedding model loaded!")
+        logger.info(" Embedding model loaded!")
     return _embedder
 
 
 class RAGService:
 
-    # ── Text Processing ───────────────────────────────────────────────────────
+    #  Text Processing 
     def chunk_text(
         self,
-        text: str,
+        text: str,  # noqa: F811
         chunk_size: int = 400,
         overlap: int = 50,
     ) -> list[str]:
-        """
-        Text ko overlapping chunks mein todo
-
-        Overlap kyun?
-        Agar meaning chunk boundary par hai to context na toote
-        Chunk 1: "... machine learning models are trained using"
-        Chunk 2: "trained using large datasets which contain..."
-        Overlap se dono chunks mein "trained using" hai → context safe
-
-        chunk_size=400: 400 words per chunk
-        overlap=50:     Last 50 words agle chunk mein bhi
-        """
         words  = text.split()
         chunks = []
         start  = 0
@@ -95,27 +44,12 @@ class RAGService:
         return chunks
 
     def embed_text(self, text: str) -> list[float]:
-        """
-        Text → Embedding Vector
-        "Hello world" → [0.12, -0.34, 0.89, ...] (384 numbers)
-
-        Yeh numbers text ka 'meaning' represent karte hain
-        Similar meaning → similar numbers
-        """
         embedder  = get_embedder()
         embedding = embedder.encode(text, normalize_embeddings=True)
         return embedding.tolist()
 
-    # ── Cosine Similarity (Manual — pgvector na ho to) ────────────────────────
+    # Cosine Similarity (Manual — pgvector na ho to) 
     def cosine_similarity(self, vec1: list[float], vec2: list[float]) -> float:
-        """
-        Do vectors ke darmiyan similarity calculate karo
-        Return: 0.0 (bilkul alag) to 1.0 (same)
-
-        Formula:
-        similarity = (A · B) / (|A| × |B|)
-        dot product / (magnitude A × magnitude B)
-        """
         dot_product = sum(a * b for a, b in zip(vec1, vec2))
         magnitude1  = math.sqrt(sum(a * a for a in vec1))
         magnitude2  = math.sqrt(sum(b * b for b in vec2))
@@ -124,7 +58,7 @@ class RAGService:
             return 0.0
         return dot_product / (magnitude1 * magnitude2)
 
-    # ── Document Indexing ─────────────────────────────────────────────────────
+    #  Document Indexing 
     async def index_document(
         self,
         content: str,
@@ -132,10 +66,6 @@ class RAGService:
         user_id: int,
         db: AsyncSession,
     ) -> int:
-        """
-        Document ko process karke DB mein store karo
-        Returns: kitne chunks bane
-        """
         # Step 1: Chunks banao
         chunks = self.chunk_text(content)
         logger.info(f"Document '{filename}' → {len(chunks)} chunks")
@@ -154,10 +84,10 @@ class RAGService:
             db.add(doc)
 
         await db.commit()
-        logger.info(f"✅ Indexed {len(chunks)} chunks for '{filename}'")
+        logger.info(f" Indexed {len(chunks)} chunks for '{filename}'")
         return len(chunks)
 
-    # ── Document Search ───────────────────────────────────────────────────────
+    #  Document Search 
     async def search_documents(
         self,
         query: str,
@@ -166,23 +96,6 @@ class RAGService:
         top_k: int = 3,
         min_similarity: float = 0.3,
     ) -> list[dict]:
-        """
-        Query se similar documents dhundho
-
-        Steps:
-        1. Query ko embed karo
-        2. Is user ke saare documents lo
-        3. Har document se similarity calculate karo
-        4. Top K results return karo
-
-        Production mein:
-        pgvector use karo → SQL level par vector search
-        SELECT * FROM documents
-        ORDER BY embedding <=> query_vector  ← pgvector operator
-        LIMIT 3
-
-        Yahan hum Python mein kar rahe hain (simplicity ke liye)
-        """
         # Query embed karo
         query_embedding = self.embed_text(query)
 
@@ -220,7 +133,7 @@ class RAGService:
         logger.info(f"Query: '{query[:50]}...' → {len(top_results)} results mili")
         return top_results
 
-    # ── Stats ─────────────────────────────────────────────────────────────────
+    # Stats 
     async def get_user_documents(self, user_id: int, db: AsyncSession) -> list[dict]:
         """User ke indexed documents ki list"""
         result = await db.execute(
@@ -241,5 +154,5 @@ class RAGService:
         return files
 
 
-# ─── Singleton ────────────────────────────────────────────────────────────────
+#  Singleton 
 rag_service = RAGService()
