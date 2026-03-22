@@ -1,27 +1,23 @@
 import logging
 from typing import AsyncGenerator
 
-import openai
-import anthropic
+import google.generativeai as genai
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.cache.service import cache_service
 from app.chat.models import Conversation, Message
 from app.config import settings
 
 logger = logging.getLogger(__name__)
 
-
-# LLM Clients 
-openai_client    = openai.AsyncOpenAI(api_key=settings.OPENAI_API_KEY)
-anthropic_client = anthropic.AsyncAnthropic(api_key=settings.ANTHROPIC_API_KEY)
+# Gemini setup
+genai.configure(api_key=settings.GEMINI_API_KEY)
 
 
-# Chat Service 
 class ChatService:
 
-    #  History Management 
+    # History Management 
+
     async def get_conversation_history(
         self,
         conversation_id: int,
@@ -35,8 +31,7 @@ class ChatService:
             .limit(limit)
         )
         messages = result.scalars().all()
-        messages.reverse()  # Chronological order mein karo
-
+        messages.reverse()
         return [
             {"role": msg.role, "content": msg.content}
             for msg in messages
@@ -67,6 +62,7 @@ class ChatService:
         await db.commit()
 
     #  Conversation CRUD 
+
     async def create_conversation(
         self,
         user_id: int,
@@ -95,7 +91,7 @@ class ChatService:
     ) -> Conversation:
         result = await db.execute(
             select(Conversation).where(
-                Conversation.id == user_id,
+                Conversation.id == conversation_id,
                 Conversation.user_id == user_id,
             )
         )
@@ -105,130 +101,106 @@ class ChatService:
             raise HTTPException(404, "Conversation nahi mili ya access nahi hai")
         return conv
 
-    #  OpenAI Chat 
+    #  Gemini Chat (replaces OpenAI) 
+
     async def chat_openai(
         self,
         user_message: str,
         history: list[dict],
-        model: str = "gpt-4o-mini",
+        model: str = "gemini-2.0-flash",
         system_prompt: str = None,
     ) -> dict:
+       
+        try:
+            gemini_model = genai.GenerativeModel(
+                model_name="gemini-2.0-flash",
+                system_instruction=system_prompt or "You are a helpful AI assistant.",
+            )
 
-        # Step 1: Cache check karo
-        cached = await cache_service.get_llm_response(user_message, model)
-        if cached:
-            return cached
+            # History ko Gemini format mein convert karo
+            gemini_history = [
+                {
+                    "role": "user" if msg["role"] == "user" else "model",
+                    "parts": [msg["content"]]
+                }
+                for msg in history[-6:]
+            ]
 
-        # Step 2: Messages build karo
-        messages = []
-        if system_prompt:
-            messages.append({"role": "system", "content": system_prompt})
-        messages.extend(history)
-        messages.append({"role": "user", "content": user_message})
+            chat = gemini_model.start_chat(history=gemini_history)
+            response = chat.send_message(user_message)
 
-        # Step 3: OpenAI call
-        response = await openai_client.chat.completions.create(
-            model=model,
-            messages=messages,
-            max_tokens=1500,
-            temperature=0.7,  # 0=deterministic, 1=creative
-        )
+            return {
+                "content":       response.text,
+                "tokens_used":   0,   
+                "model":         "gemini-2.0-flash",
+                "finish_reason": "stop",
+            }
 
-        result = {
-            "content":      response.choices[0].message.content,
-            "tokens_used":  response.usage.total_tokens,
-            "model":        model,
-            "finish_reason": response.choices[0].finish_reason,
-        }
+        except Exception as e:
+            logger.error(f"Gemini API Error: {e}")
+            raise
 
-        # Step 4: Cache mein save karo
-        await cache_service.set_llm_response(user_message, model, result)
+    #  Gemini Streaming 
 
-        return result
-
-    #  STREAMING 
     async def stream_openai(
         self,
         user_message: str,
         history: list[dict],
-        model: str = "gpt-4o-mini",
+        model: str = "gemini-2.0-flash",
         system_prompt: str = None,
         rag_context: str = None,
     ) -> AsyncGenerator[str, None]:
-
-        messages = []
-
-        # System prompt (RAG context bhi yahan aata hai)
-        base_system = system_prompt or "Aap ek helpful AI assistant hain."
-        if rag_context:
-            base_system += f"""
-
-CONTEXT:
-{rag_context}
-"""
-        messages.append({"role": "system", "content": base_system})
-
-        # History + current message
-        messages.extend(history[-6:])  # Last 6 messages (tokens bachao)
-        messages.append({"role": "user", "content": user_message})
-
-        # Streaming call
-        full_response = ""
+       
         try:
-            stream = await openai_client.chat.completions.create(
-                model=model,
-                messages=messages,
-                max_tokens=1500,
-                stream=True,  # ← Yeh magic line hai!
+            base_system = system_prompt or "You are a helpful AI assistant."
+            if rag_context:
+                base_system += f"\n\nCONTEXT:\n{rag_context}"
+
+            gemini_model = genai.GenerativeModel(
+                model_name="gemini-2.0-flash",
+                system_instruction=base_system,
             )
 
-            async for chunk in stream:
-                delta = chunk.choices[0].delta
+            gemini_history = [
+                {
+                    "role": "user" if msg["role"] == "user" else "model",
+                    "parts": [msg["content"]]
+                }
+                for msg in history[-6:]
+            ]
 
-                if delta.content:
-                    full_response += delta.content
-                    # Har chunk turant yield karo → client ko milta hai
-                    yield delta.content
+            chat = gemini_model.start_chat(history=gemini_history)
 
-        except openai.APIError as e:
-            logger.error(f"OpenAI API Error: {e}")
-            yield f"\n[Error: LLM service unavailable — {str(e)}]"
+            # Streaming
+            response = chat.send_message(user_message, stream=True)
 
-        # Streaming khatam hone ke baad full response log karo
-        logger.info(f"Streaming complete. Total chars: {len(full_response)}")
+            full_response = ""
+            for chunk in response:
+                if chunk.text:
+                    full_response += chunk.text
+                    yield chunk.text
 
-    #  Anthropic (Claude) 
+            logger.info(f"Streaming complete. Total chars: {len(full_response)}")
+
+        except Exception as e:
+            logger.error(f"Gemini Streaming Error: {e}")
+            yield f"\n[Error: {str(e)}]"
+
+    # ── Gemini Chat (replaces Anthropic) ──────────────────────────────────────
+
     async def chat_anthropic(
         self,
         user_message: str,
         history: list[dict],
         system_prompt: str = None,
     ) -> dict:
-        cached = await cache_service.get_llm_response(
-            user_message, "claude-sonnet-4-20250514"
+       
+        return await self.chat_openai(
+            user_message=user_message,
+            history=history,
+            model="gemini-2.0-flash",
+            system_prompt=system_prompt,
         )
-        if cached:
-            return cached
-
-        response = await anthropic_client.messages.create(
-            model="claude-sonnet-4-20250514",
-            max_tokens=1500,
-            system=system_prompt or "Aap ek helpful AI assistant hain.",
-            messages=[
-                *history[-6:],
-                {"role": "user", "content": user_message},
-            ],
-        )
-
-        result = {
-            "content":     response.content[0].text,
-            "tokens_used": response.usage.input_tokens + response.usage.output_tokens,
-            "model":       "claude-sonnet-4-20250514",
-        }
-        await cache_service.set_llm_response(
-            user_message, "claude-sonnet-4-20250514", result
-        )
-        return result
 
     async def stream_anthropic(
         self,
@@ -236,15 +208,14 @@ CONTEXT:
         history: list[dict],
         system_prompt: str = None,
     ) -> AsyncGenerator[str, None]:
-        async with anthropic_client.messages.stream(
-            model="claude-sonnet-4-20250514",
-            max_tokens=1500,
-            system=system_prompt or "Aap ek helpful AI assistant hain.",
-            messages=[*history[-6:], {"role": "user", "content": user_message}],
-        ) as stream:
-            async for text in stream.text_stream:
-                yield text
+       
+        async for chunk in self.stream_openai(
+            user_message=user_message,
+            history=history,
+            system_prompt=system_prompt,
+        ):
+            yield chunk
 
 
-#  Singleton 
+# Singleton
 chat_service = ChatService()

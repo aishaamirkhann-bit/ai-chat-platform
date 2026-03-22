@@ -1,49 +1,30 @@
-# AI Chat Platform — Production-Ready AI Backend
+# NeuralChat — AI Chat Platform
 
-A scalable, production-ready AI backend system built with **FastAPI**, **PostgreSQL**, **Redis**, and **LLM APIs** (OpenAI GPT-4 + Anthropic Claude).
+A production-ready AI backend with real-time streaming, RAG pipeline, and JWT authentication — built with **FastAPI** and **Google Gemini**.
 
-This project demonstrates how modern AI applications are built with real-time streaming, RAG pipelines, JWT authentication, and cost-optimized LLM integration.
-
----
-
-## Live Demo
-
-- API Documentation: [localhost:8000/docs](http://localhost:8000/docs) ← Deploy link will go here
-- GitHub: [aishaamirkhann-bit/ai-chat-platform](https://github.com/aishaamirkhann-bit/ai-chat-platform)
-
----
-
-## Problem It Solves
-
-Most AI chat systems cannot:
-- Remember user conversations across sessions
-- Answer questions based on private/custom documents
-- Handle real-time streaming efficiently at scale
-- Control LLM API costs at high traffic
-
-This platform solves all of that by combining a persistent chat system, RAG-based document intelligence, streaming LLM responses, and Redis caching.
+> 🔗 GitHub: [aishaamirkhann-bit/ai-chat-platform](https://github.com/aishaamirkhann-bit/ai-chat-platform)
 
 ---
 
 ## Features
 
-- **JWT Authentication** — Secure register, login, and protected routes
-- **AI Chat** — OpenAI GPT-4 and Anthropic Claude support
-- **Real-time Streaming** — Server-Sent Events for ChatGPT-like UX
+- **JWT Authentication** — Secure register, login, and protected routes with bcrypt
+- **Gemini AI Chat** — Real-time conversations powered by Google Gemini 2.0 Flash
+- **Streaming Responses** — Server-Sent Events (SSE) for ChatGPT-like UX
 - **RAG Pipeline** — Upload documents, ask questions about your own data
-- **Redis Caching** — 60-70% LLM cost reduction on repeated queries
-- **Rate Limiting** — 50 requests/hour per user for production safety
-- **Async Architecture** — Handles 100+ concurrent users efficiently
+- **Persistent History** — Full conversation history saved per user session
+- **Rate Limiting** — 50 requests/hour per user
+- **Async Architecture** — Handles concurrent users efficiently with async SQLAlchemy
 
 ---
 
 ## Screenshots
 
 ### Chat UI
-![NeuralChat UI](screenshots/chat-ui.png)
+![NeuralChat UI](screenshots/screenshots/chat-ui.png)
 
-### API Documentation (Swagger)
-![Swagger Docs](screenshots/swagger-docs.png)
+### API Docs (Swagger)
+![Swagger](screenshots/screenshots/swagger-docs.png)
 
 ---
 
@@ -54,21 +35,20 @@ Client (Browser)
       ↓
 FastAPI Backend
       ↓
-┌─────────────────────────────────────┐
-│  Auth (JWT)  │  Chat  │  RAG        │
-│  bcrypt      │  LLMs  │  Embeddings │
-└─────────────────────────────────────┘
-      ↓              ↓           ↓
-PostgreSQL        Redis       Vector Search
-(Users, Chats)   (Cache)    (SentenceTransformers)
+┌──────────────────────────────────┐
+│  Auth (JWT)  │  Chat  │  RAG     │
+│  bcrypt      │ Gemini │ Embeddings│
+└──────────────────────────────────┘
+      ↓              ↓          ↓
+  SQLite/PG      Gemini API   Vector Search
+ (Users, Chats)  (Streaming)  (SentenceTransformers)
 ```
 
 **Request Flow:**
 1. User sends message → JWT verified
-2. Redis cache checked → if hit, return instantly
-3. If RAG enabled → search relevant document chunks
-4. LLM called with context + history → response streamed back
-5. Message saved to PostgreSQL
+2. If RAG enabled → relevant document chunks retrieved
+3. Gemini called with context + history → response streamed back via SSE
+4. Message saved to database with full history
 
 ---
 
@@ -77,33 +57,37 @@ PostgreSQL        Redis       Vector Search
 | Layer | Technology |
 |-------|-----------|
 | Backend | Python, FastAPI, Async SQLAlchemy |
-| Database | PostgreSQL |
-| Cache | Redis |
-| AI Models | OpenAI GPT-4, Anthropic Claude |
+| AI Model | Google Gemini 2.0 Flash |
+| Database | SQLite (dev) / PostgreSQL (prod) |
 | Embeddings | SentenceTransformers |
 | Auth | JWT (python-jose, bcrypt) |
-| Deployment | AWS (EC2, RDS, ElastiCache) |
+| Streaming | Server-Sent Events (SSE) |
 
 ---
 
 ## Quick Start
 
 ```bash
-# Clone the repo
+# Clone
 git clone https://github.com/aishaamirkhann-bit/ai-chat-platform.git
 cd ai-chat-platform
 
-# Install dependencies
+# Virtual environment
+python -m venv venv
+venv\Scripts\activate      # Windows
+source venv/bin/activate   # Mac/Linux
+
+# Install
 pip install -r requirements.txt
 
-# Setup environment variables
+# Setup environment
 cp .env.example .env
-# Edit .env and add your API keys
+# Add your GEMINI_API_KEY in .env
 
-# Run the server
+# Run
 uvicorn app.main:app --reload
 
-# Open API docs
+# Open
 # http://localhost:8000/docs
 ```
 
@@ -111,15 +95,13 @@ uvicorn app.main:app --reload
 
 ## Environment Variables
 
-Create a `.env` file with the following:
-
 ```env
-DATABASE_URL=postgresql+asyncpg://user:password@localhost:5432/ai_chat_db
-REDIS_URL=redis://localhost:6379
+DATABASE_URL=sqlite+aiosqlite:///./aichat.db
 SECRET_KEY=your-secret-key-here
-OPENAI_API_KEY=sk-your-openai-key
-ANTHROPIC_API_KEY=sk-ant-your-anthropic-key
+GEMINI_API_KEY=your-gemini-api-key-here
 ```
+
+Get a **free** Gemini API key at: https://aistudio.google.com/app/apikey
 
 ---
 
@@ -129,13 +111,13 @@ ANTHROPIC_API_KEY=sk-ant-your-anthropic-key
 |--------|----------|------|-------------|
 | POST | /auth/register | No | Register new user |
 | POST | /auth/login | No | Login + get JWT token |
-| GET | /auth/me | Yes | Get current user |
+| GET | /auth/me | Yes | Get current user info |
 | POST | /chat/conversations | Yes | Create conversation |
-| GET | /chat/conversations | Yes | List conversations |
-| POST | /chat/conversations/{id} | Yes | Send message |
+| GET | /chat/conversations | Yes | List all conversations |
+| POST | /chat/conversations/{id} | Yes | Send message (non-streaming) |
 | POST | /chat/conversations/{id}/stream | Yes | Streaming chat (SSE) |
 | POST | /rag/upload | Yes | Upload document for RAG |
-| POST | /rag/search | Yes | Search documents |
+| GET | /rag/docs | Yes | List uploaded documents |
 | GET | /health | No | Health check |
 
 ---
@@ -143,16 +125,16 @@ ANTHROPIC_API_KEY=sk-ant-your-anthropic-key
 ## Key Technical Decisions
 
 **Why FastAPI?**
-FastAPI is built for async workloads. Since LLM API calls take 2-5 seconds, async allows the server to handle hundreds of concurrent requests without blocking.
+Built for async workloads. LLM calls take 2-5 seconds — async allows handling hundreds of concurrent requests without blocking.
 
-**Why Redis Caching?**
-GPT-4 costs ~$0.03 per 1K tokens. If the same question is asked repeatedly, caching saves significant cost. MD5 hash of prompt+model is used as the cache key with 1-hour TTL.
+**Why Gemini over OpenAI?**
+Google Gemini offers a generous free tier with no credit card required, making it ideal for development and portfolio projects. The API is production-ready and supports streaming.
 
 **Why RAG over Fine-tuning?**
-RAG is more flexible and cost-effective for private data. Fine-tuning requires retraining for every data update. RAG allows real-time document updates without any model changes.
+RAG allows real-time document updates without retraining. More flexible and cost-effective for private/custom data.
 
 **Why JWT over Sessions?**
-JWT is stateless — the server stores nothing. This makes it horizontally scalable across multiple servers, which is critical for cloud deployments.
+Stateless — the server stores nothing. Horizontally scalable across multiple servers for cloud deployments.
 
 ---
 
@@ -160,23 +142,23 @@ JWT is stateless — the server stores nothing. This makes it horizontally scala
 
 ```
 app/
-├── main.py              # FastAPI app entry point
-├── config.py            # Environment settings
-├── database.py          # PostgreSQL async connection
+├── main.py              ← FastAPI app entry point
+├── config.py            ← Environment settings
+├── database.py          ← Async SQLAlchemy setup
 ├── auth/
-│   ├── models.py        # User table
-│   ├── service.py       # JWT + bcrypt logic
-│   └── router.py        # Auth endpoints
+│   ├── models.py        ← User table
+│   ├── service.py       ← JWT + bcrypt logic
+│   └── router.py        ← Auth endpoints
 ├── chat/
-│   ├── models.py        # Conversation + Message tables
-│   ├── service.py       # OpenAI + Claude integration
-│   └── router.py        # Chat + streaming endpoints
+│   ├── models.py        ← Conversation + Message tables
+│   ├── service.py       ← Gemini AI integration
+│   └── router.py        ← Chat + streaming endpoints
 ├── rag/
-│   ├── models.py        # Document table
-│   ├── service.py       # Embeddings + vector search
-│   └── router.py        # Upload + search endpoints
+│   ├── models.py        ← Document table
+│   ├── service.py       ← Embeddings + vector search
+│   └── router.py        ← Upload + search endpoints
 └── cache/
-    └── service.py       # Redis caching + rate limiting
+    └── service.py       ← Rate limiting
 ```
 
 ---
@@ -192,9 +174,9 @@ app/
 
 ## Author
 
-**Aisha Amir** — Backend Engineer with AI/ML focus
+**Aisha Amir** — AI Backend Engineer
 
-- Backend Engineer specializing in AI systems (FastAPI, RAG, LLM integration)
+Backend Engineer specializing in AI systems — FastAPI, RAG pipelines, LLM integration, and scalable async architectures.
 
-- Actively building scalable AI applications and seeking opportunities in AI/backend engineering.
-- Email: [aishaamirkhann@gmail.com]
+📧 aishaamirkhann@gmail.com  
+🌍 Lahore, Pakistan — Open to Remote & Relocation

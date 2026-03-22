@@ -1,13 +1,14 @@
 from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine
 from sqlalchemy.orm import DeclarativeBase, sessionmaker
+from sqlalchemy.pool import NullPool
 from app.config import settings
+
 
 engine = create_async_engine(
     settings.DATABASE_URL,
     echo=False,
     pool_pre_ping=True,
-    pool_size=10,
-    max_overflow=20,
+    poolclass=NullPool,
 )
 
 AsyncSessionLocal = sessionmaker(
@@ -22,11 +23,9 @@ class Base(DeclarativeBase):
 
 
 async def create_tables():
-    """Create all tables on startup"""
-    # Import models here so Base knows about them
-    from app.auth.models import User           # noqa
-    from app.chat.models import Conversation, Message  # noqa
-    from app.rag.models import Document        # noqa
+    from app.auth.models import User
+    from app.chat.models import Conversation, Message
+    from app.rag.models import Document
 
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)
