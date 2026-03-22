@@ -39,7 +39,7 @@ Complete features:
 # CORS — Allow frontend to call backend
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],  # In production: restrict to your domain
+    allow_origins=["*"],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -64,8 +64,11 @@ async def health_check():
     }
 
 
+# ✅ FIX: Root route ab index.html serve karega
 @app.get("/", tags=["System"])
 async def root():
+    if os.path.exists("index.html"):
+        return FileResponse("index.html")
     return {
         "message": "AI Chat Platform API",
         "docs": "/docs",
