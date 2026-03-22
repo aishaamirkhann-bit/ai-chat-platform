@@ -328,7 +328,7 @@
     </div>
     <div class="config-row">
       <label class="config-label">Backend URL</label>
-      <input type="text" class="config-input" id="api-url-input" value="http://localhost:8000">
+      <input type="text" class="config-input" id="api-url-input" value="https://ai-chat-platform-production-1f81.up.railway.app">
     </div>
     <div class="config-row">
       <label class="config-label">Model</label>
@@ -351,7 +351,8 @@
 
 <script>
 // ── CONFIG ────────────────────────────────────────────────────
-let API_URL = localStorage.getItem('api_url') || 'http://localhost:8000';
+// ✅ FIXED: Railway backend URL set kar diya (localhost ki jagah)
+let API_URL = localStorage.getItem('api_url') || 'https://ai-chat-platform-production-1f81.up.railway.app';
 let MODEL   = localStorage.getItem('model') || 'gemini-1.5-flash';
 let TOKEN   = localStorage.getItem('token') || '';
 let USER    = JSON.parse(localStorage.getItem('user') || '{}');
@@ -455,7 +456,6 @@ async function loadConversations() {
   try {
     const res  = await authFetch('/chat/conversations');
     const data = await res.json();
-    // FIX: ensure always array
     conversations = Array.isArray(data) ? data : [];
     renderConvList();
   } catch(e) {
@@ -495,7 +495,6 @@ async function newConversation() {
       body: JSON.stringify({ title: 'New Chat', model: MODEL })
     });
     const conv = await res.json();
-    // FIX: ensure conversations is array before unshift
     if (!Array.isArray(conversations)) conversations = [];
     conversations.unshift(conv);
     currentConvId = conv.id;
